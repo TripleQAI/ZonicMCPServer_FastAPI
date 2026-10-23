@@ -1,0 +1,26 @@
+{
+  "jsonrpc": "2.0",
+  "id": 5,
+  "method": "tools/call",
+  "params": {
+    "name": "execute",
+    "arguments": {
+      "requestId": "pipeline-dag",
+      "execution": { "mode": "pipeline", "maxConcurrency": 8 },
+      "tools": [
+        { "id": "a", "type": "function",
+          "config": { "functionPath": "builtins.max", "callStyle": "args" },
+          "input": { "x": 10, "y": 3 } },
+        { "id": "b", "type": "function", "dependsOn": ["a"],
+          "config": { "functionPath": "builtins.pow", "callStyle": "kwargs" },
+          "input": { "base": "{{results.a.data.value}}", "exp": 2 } },
+        { "id": "c", "type": "function", "dependsOn": ["a"],
+          "config": { "functionPath": "builtins.pow", "callStyle": "kwargs" },
+          "input": { "base": "{{results.a.data.value}}", "exp": 3 } },
+        { "id": "d", "type": "function", "dependsOn": ["b", "c"],
+          "config": { "functionPath": "builtins.max", "callStyle": "args" },
+          "input": { "b": "{{results.b.data.value}}", "c": "{{results.c.data.value}}" } }
+      ]
+    }
+  }
+}
