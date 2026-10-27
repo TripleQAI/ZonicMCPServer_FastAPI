@@ -97,6 +97,21 @@ internet. The `sample_open_data` connection is the Neon dev branch as
 `sample_open_data_reader`: add it to `.env.lambda` as
 `DATABASE_CONNECTIONS={"sample_open_data": "postgresql://..."}` and run the script again.
 
+### Current deployment
+
+Deployed and verified on 27 October 2026: `/health` answers, `/mcp/` refuses a call without
+the token, and with it a `function` tool (`statistics.mean`) and an `api` tool (httpbin) succeed.
+
+| Item | Value |
+|---|---|
+| Platform | AWS Lambda, account `001634074733` (`tripleq-development`), region `us-east-1` |
+| Function | `zonic-mcp-server` (container image, arm64, 512 MB, 120-second timeout); cold start about 5 s |
+| Endpoint | `https://rwlgztfgkt4kyuazqsacjv5xka0fduqz.lambda-url.us-east-1.on.aws/mcp/` (`AuthType NONE`, `RESPONSE_STREAM`) |
+| Authentication | `Authorization: Bearer <MCP_AUTH_TOKEN>`; the token is in SSM `/zonic-mcp-server/runtime` and the git-ignored `.env.lambda` |
+| Container image | ECR repository `zonic-mcp-server` (five newest images kept) |
+| Settings | Cache off, `FUNCTION_ALLOWLIST=statistics`, no database connections yet (`sample_open_data` pending its DSN) |
+| Redeploy | `bash deploy/aws-lambda/deploy.sh` |
+
 ## Layout
 
 ```
