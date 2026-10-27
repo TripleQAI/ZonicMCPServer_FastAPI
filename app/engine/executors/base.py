@@ -14,6 +14,41 @@ if TYPE_CHECKING:
     from app.models import ToolResult, ToolSpec
 
 
+def _rows(value: Any) -> list | None:
+    """The rows of a result: a list, or the last of a stored procedure's result sets."""
+    if isinstance(value, list):
+        return value
+    if isinstance(value, dict) and isinstance(value.get('resultSets'), list) and value['resultSets']:
+        return _rows(value['resultSets'][-1])
+    return None
+
+
+def summarize(raw: Any, preview_rows: int) -> dict:
+    """What a caller needs about a cached result without reading it back.
+
+    The first ``preview_rows`` rows, the row count and columns (for row results), and
+    the size and SHA-256 of the stored JSON, so a caller can decide whether to fetch it.
+    """
+    import hashlib
+    import json
+
+    text = json.dumps(raw, default=str, separators=(',', ':'), ensure_ascii=False)
+    summary: dict[str, Any] = {
+        'sizeBytes': len(text.encode()),
+        'sha256': hashlib.sha256(text.encode()).hexdigest(),
+    }
+    rows = _rows(raw)
+    if rows is not None:
+        columns: list[str] = []
+        for row in rows:
+            if isinstance(row, dict):
+                columns.extend(key for key in row if key not in columns)
+        count = max(0, int(preview_rows or 0))
+        summary.update(rowCount=len(rows), columns=columns,
+                       rows=json.loads(json.dumps(rows[:count], default=str)))
+    return summary
+
+
 class BaseExecutor(ABC):
     """Template Method: resolve → cache-wrapped run → normalize."""
 
@@ -91,7 +126,9 @@ class BaseExecutor(ABC):
         # return the data inline rather than a dead pointer.
         if not await svc.set(key, raw, ttl=self._cache_ttl(result_cfg)):
             return CachedResult.inline(raw, variable=flow_key).to_dict()
-        return CachedResult.cached(flow_key, key).to_dict()
+        preview = result_cfg.get('preview')
+        summary = summarize(raw, preview.get('rows', 0)) if isinstance(preview, dict) else None
+        return CachedResult.cached(flow_key, key, summary).to_dict()
 
     @staticmethod
     def _require(result_cfg: dict, path: str) -> Any:

@@ -11,6 +11,8 @@ Endpoints used (all under ``CACHE_API_URL``):
 
 The cache degrades gracefully: any transport or service error is logged and
 treated as a miss (``get``) or a no-op (``set``) so it never breaks tool execution.
+An empty ``CACHE_API_URL`` turns the cache off: no request is sent, every read is a
+miss and every store unconfirmed, so ``saveToCache`` results come back inline.
 """
 from __future__ import annotations
 
@@ -26,6 +28,10 @@ log = logging.getLogger(__name__)
 def _base_url() -> str:
     from app.config import get_settings
     return get_settings().cache_api_url.rstrip('/')
+
+
+def _enabled() -> bool:
+    return bool(_base_url())
 
 
 def _timeout() -> float:
@@ -61,6 +67,8 @@ def _json_body(payload: dict) -> str:
 class CacheService:
     async def get(self, key: str) -> Any | None:
         """Return the cached value, or None on miss or any error. Read-only."""
+        if not _enabled():
+            return None
         try:
             from app.infra.http_client import get_http_client
             client = await get_http_client()
@@ -78,6 +86,8 @@ class CacheService:
         Avoids transferring/parsing the whole payload just to test presence. Cached
         keys are always stored with a TTL, so ttl_remaining is non-null iff present.
         """
+        if not _enabled():
+            return False
         try:
             from app.infra.http_client import get_http_client
             client = await get_http_client()
@@ -90,6 +100,8 @@ class CacheService:
 
     async def set(self, key: str, value: Any, ttl: int = 300) -> bool:
         """Store (overwrite) a value. Returns True iff the store was confirmed."""
+        if not _enabled():
+            return False
         try:
             from app.infra.http_client import get_http_client
             client = await get_http_client()
@@ -112,6 +124,8 @@ class CacheService:
             return cached, True
 
         value = await factory()
+        if not _enabled():
+            return value, False
 
         try:
             from app.infra.http_client import get_http_client

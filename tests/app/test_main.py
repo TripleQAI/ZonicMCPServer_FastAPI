@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from app.config import Settings
 from app.main import create_app
@@ -83,6 +84,34 @@ def test_unknown_tool_is_an_error(client: TestClient) -> None:
     result = (rpc(client, 'tools/call', {'name': 'other', 'arguments': {'tools': []}}))['result']
     assert result['isError'] is True
     assert 'exposes only "execute"' in result['content'][0]['text']
+
+
+# ── bearer token ──────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def secured(default_settings: Settings) -> Iterator[TestClient]:
+    default_settings.mcp_auth_token = SecretStr('s3cret')
+    with TestClient(create_app(default_settings)) as test_client:
+        yield test_client
+
+
+@pytest.mark.parametrize('authorization', [None, 'Bearer wrong', 's3cret', 'Basic s3cret'])
+def test_token_is_required_when_configured(secured: TestClient, authorization: str | None) -> None:
+    headers = HEADERS | ({'Authorization': authorization} if authorization else {})
+    response = secured.post('/mcp/', headers=headers,
+                            json={'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {}})
+    assert response.status_code == 401
+    assert response.headers['WWW-Authenticate'] == 'Bearer'
+
+
+def test_matching_token_reaches_the_transport(secured: TestClient) -> None:
+    secured.headers['Authorization'] = 'Bearer s3cret'
+    tools = rpc(secured, 'tools/list', {})['result']['tools']
+    assert [t['name'] for t in tools] == ['execute']
+
+
+def test_health_needs_no_token(secured: TestClient) -> None:
+    assert secured.get('/health').status_code == 200
 
 
 # ── execution modes ───────────────────────────────────────────────────────────

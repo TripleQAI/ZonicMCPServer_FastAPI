@@ -65,6 +65,14 @@ class BooleanEncoder(ValueEncoder):
         raise ValueError(f'Value "{value}" is not a valid boolean.')
 
 
+class PostgresBooleanEncoder(BooleanEncoder):
+    """Emits PostgreSQL's ``true`` / ``false`` (valid quoted or not)."""
+
+    def encode(self, value: Any) -> str:
+        bit = super().encode(value)
+        return {'1': 'true', '0': 'false'}.get(bit, bit)
+
+
 _STRING = StringEncoder()
 
 #: dataType → encoder. Unknown types fall back to the string encoder, which is the
@@ -84,5 +92,17 @@ _ENCODERS: dict[str, ValueEncoder] = {
 }
 
 
-def get_sql_encoder(data_type: str) -> ValueEncoder:
-    return _ENCODERS.get((data_type or '').strip().lower(), _STRING)
+#: Per-dialect replacements of the SQL Server encoders above.
+_DIALECT_ENCODERS: dict[str, dict[str, ValueEncoder]] = {
+    'postgresql': {'bool': PostgresBooleanEncoder(), 'boolean': PostgresBooleanEncoder()},
+}
+
+
+def get_sql_encoder(data_type: str, dialect: str = 'mssql') -> ValueEncoder:
+    """The encoder of a dataType in a dialect (``mssql`` or ``postgresql``).
+
+    Quoting is the same in both (doubled single quotes, as PostgreSQL's standard
+    strings use); only booleans differ.
+    """
+    key = (data_type or '').strip().lower()
+    return _DIALECT_ENCODERS.get(dialect, {}).get(key) or _ENCODERS.get(key, _STRING)

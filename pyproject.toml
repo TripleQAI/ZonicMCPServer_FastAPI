@@ -16,6 +16,8 @@ dependencies = [
     "httpx>=0.27",
     # database executor (MSSQL)
     "pyodbc>=5.1",
+    # database executor (PostgreSQL connections named in DATABASE_CONNECTIONS)
+    "psycopg[binary]>=3.2,<4",
     # nested config access in the read-through cache
     "pydash>=8.0",
 ]

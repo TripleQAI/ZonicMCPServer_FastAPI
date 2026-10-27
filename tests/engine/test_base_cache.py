@@ -103,6 +103,16 @@ def test_miss_produces_stores_and_returns_key_pointer(fake_cache):
     assert fake_cache.store['mcp::abc123'] == [{'a': 1}]     # stored the raw data
 
 
+def test_miss_with_preview_returns_a_summary_with_the_key(fake_cache):
+    produce, _ = _counting_producer([{'a': 1}, {'a': 2}, {'a': 3}])
+    out = _run(ProbeExecutor()._read_through(_cache_config(preview={'rows': 2}), produce))
+    assert out['is_cached'] is True
+    assert out['data']['value'] == 'mcp::abc123'
+    assert out['data']['preview'] == {
+        'rows': [{'a': 1}, {'a': 2}], 'rowCount': 3, 'columns': ['a'],
+        'sizeBytes': 25, 'sha256': out['data']['preview']['sha256']}
+
+
 def test_store_unconfirmed_returns_inline_data(monkeypatch):
     svc = FakeCacheService(store_fails=True)                 # cache down
     monkeypatch.setattr('app.infra.cache.get_cache_service', lambda: svc)

@@ -18,8 +18,14 @@ class DatabaseExecutor(BaseExecutor):
 
         from .query_mode import get_query_mode
 
-        connection_string = get_connection_registry().get_connection_string()
+        # The tool names its connection (never a connection string); none is the default.
+        connection = get_connection_registry().get(
+            config.get('connection') or config.get('connectionName'))
+        database_type = (config.get('databaseType') or '').strip().lower()
+        if database_type and database_type != connection.kind:
+            raise ValueError(f'Connection "{connection.name}" is {connection.kind}, '
+                             f'not {database_type}.')
 
         query_type = config.get('queryType', 'script')
         mode = get_query_mode(query_type)
-        return await mode.execute(connection_string, config, resolved_input, ctx)
+        return await mode.execute(connection, config, resolved_input, ctx)

@@ -10,6 +10,7 @@ with its own MCP session manager, for tests.
 """
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -30,6 +31,7 @@ log = logging.getLogger(__name__)
 
 MCP_PATHS = ('/mcp', '/mcp/')
 NOT_ACCEPTABLE = {'detail': 'Not Acceptable. This server speaks MCP only.'}
+UNAUTHORIZED = {'detail': 'Unauthorized. Send Authorization: Bearer <MCP_AUTH_TOKEN>.'}
 
 
 class McpTransport:
@@ -37,13 +39,24 @@ class McpTransport:
 
     A class instance, not a function, so Starlette's Route passes the raw ASGI
     scope through and accepts every HTTP method; the transport answers 405 itself.
+    With an auth token, a request without the matching bearer header gets 401.
     """
 
-    def __init__(self, manager: StreamableHTTPSessionManager) -> None:
+    def __init__(self, manager: StreamableHTTPSessionManager, auth_token: str = '') -> None:
         self._manager = manager
+        self._expected = f'Bearer {auth_token}'.encode() if auth_token else None
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if self._expected is not None and not self._authorized(scope):
+            response = JSONResponse(UNAUTHORIZED, status_code=401,
+                                    headers={'WWW-Authenticate': 'Bearer'})
+            await response(scope, receive, send)
+            return
         await self._manager.handle_request(scope, receive, send)
+
+    def _authorized(self, scope: Scope) -> bool:
+        presented = dict(scope['headers']).get(b'authorization', b'')
+        return hmac.compare_digest(presented, self._expected)
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -79,7 +92,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         docs_url=None, redoc_url=None, openapi_url=None,
     )
 
-    transport = McpTransport(manager)
+    transport = McpTransport(manager, settings.mcp_auth_token.get_secret_value())
     for path in MCP_PATHS:
         app.router.routes.append(Route(path, endpoint=transport, include_in_schema=False))
 

@@ -134,3 +134,21 @@ def test_get_or_set_actually_posts_when_value_has_dates(fake_client):
 
     asyncio.run(get_cache_service().get_or_set('k', factory, ttl=60))
     assert any(c[0] == 'POST' for c in fake_client.calls)
+
+
+def test_empty_url_turns_the_cache_off(fake_client, default_settings):
+    import asyncio
+    default_settings.cache_api_url = ''
+    svc = get_cache_service()
+
+    async def factory():
+        return [ROW]
+
+    async def scenario():
+        assert await svc.get('k') is None
+        assert await svc.exists('k') is False
+        assert await svc.set('k', [ROW]) is False
+        assert await svc.get_or_set('k', factory) == ([ROW], False)
+
+    asyncio.run(scenario())
+    assert fake_client.calls == []

@@ -46,16 +46,56 @@ as a typed `Settings` class; code reads them with `get_settings()`.
 
 | Area | Variables |
 |---|---|
-| MCP | `MCP_EXECUTE_TOOL_NAME`, `MCP_JSON_RESPONSE`, `MCP_STATELESS` |
+| MCP | `MCP_EXECUTE_TOOL_NAME`, `MCP_JSON_RESPONSE`, `MCP_STATELESS`, `MCP_AUTH_TOKEN` (bearer token required on `/mcp` when set) |
 | Execution | `MAX_CONCURRENCY`, `DEFAULT_CALL_TIMEOUT_SECONDS`, `HTTP_TIMEOUT_SECONDS`, `ALLOWED_HTTP_METHODS` |
 | Cache service | `CACHE_API_URL`, `CACHE_HTTP_TIMEOUT_SECONDS`, `CACHE_DEFAULT_TTL_SECONDS` |
-| Database | `MSSQL_*`, or `DB_CONNECTION_STRING` to bypass assembly |
+| Database | `MSSQL_*`, or `DB_CONNECTION_STRING` to bypass assembly (the default connection); `DATABASE_CONNECTIONS` (JSON name → DSN) for named SQL Server or PostgreSQL connections; `POSTGRES_READ_ONLY`, `POSTGRES_STATEMENT_TIMEOUT_SECONDS` |
 | Function tools | `FUNCTION_ALLOWLIST`; dynamic registration: `FUNCTION_DYNAMIC_REGISTRATION_ENABLED`, `CONFIG_API_*`, `FUNCTION_ALLOWED_MODULE_PREFIXES`, `FUNCTION_PACKAGE_INDEX_URL`, `FUNCTION_NEGATIVE_CACHE_TTL_SECONDS` |
 | Executors | `EXECUTOR_TYPES` (JSON: tool type -> class path) |
 | Logging | `LOG_LEVEL` |
 
 The database executor needs an ODBC driver for SQL Server on the host
-(`ODBC Driver 18 for SQL Server`).
+(`ODBC Driver 18 for SQL Server`) for SQL Server connections; PostgreSQL connections use
+psycopg.
+
+**Database tools** name their connection (`config.connection` or `config.connectionName`),
+never a connection string; `config.databaseType`, when set, must match it. Scripts fill their
+`<placeholders>` with values encoded for the connection's dialect. `config.maxRows` caps the
+rows returned and `config.queryTimeout` (seconds) bounds the query. Stored procedures run on
+SQL Server connections only.
+
+**API tools** fill their `<placeholders>` in `url` (percent-encoded), `queryParams`, `headers`
+(line breaks refused) and the body (JSON-escaped for `bodyType: json`). Number, date and boolean
+parameters are validated as for SQL.
+
+**Cached results.** With `config.result.saveToCache`, a tool that also sets
+`config.result.preview: {"rows": N}` gets `data.preview` with the key: the first `N` rows, the
+row count and columns, and the size and SHA-256 of the stored JSON, so the caller need not read
+the value back.
+
+## Deploy to AWS (Lambda)
+
+The `Dockerfile` builds a Lambda container image (arm64): the Lambda Web Adapter runs
+uvicorn unchanged, and the ODBC driver is included. `deploy/aws-lambda/deploy.sh` pushes it
+to ECR and creates (or updates) the function and a public Function URL with response
+streaming, as pgfoundation's deployment does; `/mcp` is guarded by `MCP_AUTH_TOKEN`.
+
+```bash
+bash deploy/aws-lambda/deploy.sh      # AWS_PROFILE defaults to tripleq-development
+```
+
+Settings are the function's environment variables: built-in defaults, then the SSM
+parameter `/zonic-mcp-server/runtime` (SecureString), then the git-ignored `.env.lambda`.
+Each run writes the merged result back to the parameter; the first run generates
+`MCP_AUTH_TOKEN`. The defaults turn the cache off (`CACHE_API_URL` empty) and allow only
+`statistics`. The script refuses an empty `FUNCTION_ALLOWLIST`, one naming a module that
+can run arbitrary code (`builtins`, `os`, `subprocess`, ...), and dynamic registration,
+which cannot install packages into a read-only image.
+
+The function runs outside a VPC, so its databases and APIs must be reachable over the
+internet. The `sample_open_data` connection is the Neon dev branch as
+`sample_open_data_reader`: add it to `.env.lambda` as
+`DATABASE_CONNECTIONS={"sample_open_data": "postgresql://..."}` and run the script again.
 
 ## Layout
 
@@ -77,6 +117,9 @@ docs/                design plan and dynamic function registration (from the Dja
 ## Test
 
 ```powershell
-.venv\Scripts\python.exe -m pytest           # 169 tests, no database, network or cache needed
+.venv\Scripts\python.exe -m pytest           # 187 tests, no database, network or cache needed
 .venv\Scripts\python.exe -m ruff check app tests
 ```
+
+With `LIVE_SAMPLE_OPEN_DATA_DSN` set to the `sample_open_data_reader` connection,
+`tests/engine/test_postgres.py::test_live_sample_open_data` also queries the open test data.

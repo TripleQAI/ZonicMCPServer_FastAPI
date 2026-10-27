@@ -11,23 +11,26 @@ class CachedResult:
 
     ``value`` is the cache key when ``is_cached`` is true, otherwise the raw result.
     ``variable`` is the flow key the result should be bound to (None when the result
-    is not associated with a cache entry).
+    is not associated with a cache entry). ``preview`` summarizes a result just cached
+    when the tool asked for one (``config.result.preview``): its first rows, row count,
+    columns, size and hash.
     """
 
     is_cached: bool
     variable: str | None
     value: Any
+    preview: dict | None = None
 
     @classmethod
-    def cached(cls, variable: str, key: str) -> CachedResult:
-        return cls(is_cached=True, variable=variable, value=key)
+    def cached(cls, variable: str, key: str, preview: dict | None = None) -> CachedResult:
+        return cls(is_cached=True, variable=variable, value=key, preview=preview)
 
     @classmethod
     def inline(cls, raw: Any, variable: str | None = None) -> CachedResult:
         return cls(is_cached=False, variable=variable, value=raw)
 
     def to_dict(self) -> dict:
-        return {
-            'is_cached': self.is_cached,
-            'data': {'variable': self.variable, 'value': self.value},
-        }
+        data: dict[str, Any] = {'variable': self.variable, 'value': self.value}
+        if self.preview is not None:
+            data['preview'] = self.preview
+        return {'is_cached': self.is_cached, 'data': data}

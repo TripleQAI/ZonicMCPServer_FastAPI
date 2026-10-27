@@ -22,9 +22,23 @@ class ApiExecutor(BaseExecutor):
         if method not in allowed:
             raise ValueError(f'HTTP method "{method}" is not allowed.')
 
-        url = config.get('url', '')
-        headers = {**config.get('headers', {}), **resolved_input.get('headers', {})}
-        query_params = {**config.get('queryParams', {}), **resolved_input.get('queryParams', {})}
+        from app.infra.parameters import ToolParameter, substitute
+
+        from .encoders import api_encoder
+
+        # The tool's <placeholders> are filled in each location with that location's encoding.
+        parameters = ToolParameter.from_list(config.get('parameters', []))
+
+        def fill(value: Any, location: str) -> Any:
+            if not parameters or not isinstance(value, str):
+                return value
+            return substitute(value, parameters, resolved_input, api_encoder(location))
+
+        url = fill(config.get('url', ''), 'url')
+        headers = {key: fill(value, 'header') for key, value in
+                   {**config.get('headers', {}), **resolved_input.get('headers', {})}.items()}
+        query_params = {key: fill(value, 'query') for key, value in
+                        {**config.get('queryParams', {}), **resolved_input.get('queryParams', {})}.items()}
         auth_cfg = config.get('auth', {})
 
         if auth_cfg.get('type') == 'bearer_token':
@@ -44,8 +58,10 @@ class ApiExecutor(BaseExecutor):
             headers['Authorization'] = f'Basic {encoded}'
 
         body_type = config.get('bodyType', 'none')
-        body_template = config.get('bodyTemplate', resolved_input.get('body', ''))
-        body_form = config.get('bodyFormData', resolved_input.get('formData', {}))
+        body_template = fill(config.get('bodyTemplate', resolved_input.get('body', '')),
+                             'json' if body_type == 'json' else 'text')
+        body_form = {key: fill(value, 'text') for key, value in
+                     config.get('bodyFormData', resolved_input.get('formData', {})).items()}
 
         client = await get_http_client()
 

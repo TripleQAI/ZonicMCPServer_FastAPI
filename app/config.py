@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     mcp_execute_tool_name: str = 'execute'
     mcp_json_response: bool = True
     mcp_stateless: bool = True
+    #: When set, /mcp requires ``Authorization: Bearer <token>``. Empty leaves /mcp open,
+    #: which is only safe on a private network.
+    mcp_auth_token: SecretStr = SecretStr('')
 
     # ── Execution ─────────────────────────────────────────────────────────────
     max_concurrency: int = Field(8, gt=0)
@@ -66,6 +69,16 @@ class Settings(BaseSettings):
     #: Set directly to bypass assembly from the MSSQL_* values.
     db_connection_string_override: SecretStr = Field(
         SecretStr(''), validation_alias='DB_CONNECTION_STRING')
+
+    # ── Named database connections ────────────────────────────────────────────
+    #: JSON ``{"name": "<dsn>"}``. A ``postgresql://`` DSN is a PostgreSQL connection,
+    #: anything else an ODBC string for SQL Server. Tools name a connection; they
+    #: never carry a connection string.
+    database_connections: dict[str, SecretStr] = Field(default_factory=dict)
+    #: PostgreSQL transactions are read-only unless this is turned off.
+    postgres_read_only: bool = True
+    #: Statement timeout of PostgreSQL queries when the tool sets no ``queryTimeout``.
+    postgres_statement_timeout_seconds: float = Field(30, gt=0)
 
     # ── Function executor ─────────────────────────────────────────────────────
     function_allowlist: Annotated[list[str], NoDecode] = Field(default_factory=list)
