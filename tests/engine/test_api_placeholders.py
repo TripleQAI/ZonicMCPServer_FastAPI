@@ -124,3 +124,54 @@ def test_summary_of_rows():
 def test_summary_of_a_stored_procedure_and_of_a_non_row_result():
     assert summarize({'resultSets': [[{'x': 1}], [{'y': 2}, {'y': 3}]]}, 1)['rows'] == [{'y': 2}]
     assert 'rowCount' not in summarize({'value': 1}, 5)
+
+
+# --- Authentication: the tool's auth object, or the builder's HTTP tool form fields ---------------
+
+
+def test_the_builder_forms_bearer_token_reads_the_named_server_credential(client, monkeypatch):
+    """The builder saves authType / credentialName, not an auth object; the call still carries the key."""
+    monkeypatch.setenv('SEARCH_KEY', 'tvly-test')
+    result = _run(ToolSpec(id='web_search', type='api', config={
+        'method': 'POST',
+        'url': 'https://api.search.test/search',
+        'bodyType': 'json',
+        'bodyTemplate': '{"query": "<query>", "max_results": 5}',
+        'authType': 'bearer_token',
+        'credentialName': 'SEARCH_KEY',
+        'parameters': [{'name': 'query', 'placeholder': '<query>'}],
+    }, input={'query': 'grid "peak" news'}))
+    assert result.status == 'success', result.error
+    call = client.calls[0]
+    assert call['headers']['Authorization'] == 'Bearer tvly-test'
+    assert call['json'] == {'query': 'grid "peak" news', 'max_results': 5}
+
+
+def test_the_builder_forms_api_key_uses_its_header_name(client, monkeypatch):
+    monkeypatch.setenv('WEATHER_KEY', 'k-123')
+    _run(ToolSpec(id='t', type='api', config={
+        'method': 'GET', 'url': 'https://api.weather.test/now',
+        'authType': 'api_key', 'credentialName': 'WEATHER_KEY', 'apiKeyHeader': 'X-Weather-Key',
+    }))
+    assert client.calls[0]['headers']['X-Weather-Key'] == 'k-123'
+
+
+def test_an_auth_object_still_wins_over_the_form_fields(client, monkeypatch):
+    monkeypatch.setenv('A', 'from-auth')
+    monkeypatch.setenv('B', 'from-form')
+    _run(ToolSpec(id='t', type='api', config={
+        'method': 'GET', 'url': 'https://api.example.test/',
+        'auth': {'type': 'bearer_token', 'envVar': 'A'},
+        'authType': 'bearer_token', 'credentialName': 'B',
+    }))
+    assert client.calls[0]['headers']['Authorization'] == 'Bearer from-auth'
+
+
+def test_a_missing_credential_fails_the_tool_instead_of_calling_without_it(client, monkeypatch):
+    monkeypatch.delenv('NOT_SET_ANYWHERE', raising=False)
+    result = _run(ToolSpec(id='t', type='api', config={
+        'method': 'GET', 'url': 'https://api.example.test/',
+        'authType': 'bearer_token', 'credentialName': 'NOT_SET_ANYWHERE',
+    }))
+    assert result.status == 'error' and 'NOT_SET_ANYWHERE' in str(result.error)
+    assert client.calls == []

@@ -182,7 +182,7 @@ result. Blocking work (pyodbc, psycopg, synchronous functions) runs in a worker 
 | `config.url`, `config.queryParams`, `config.headers` | The request. `input.queryParams` and `input.headers` are merged over the configured ones. |
 | `config.bodyType` | `none` (default), `json`, `form` or anything else (sent as raw text). A body is sent only for POST, PUT and PATCH. |
 | `config.bodyTemplate`, `config.bodyFormData` | The body; `input.body` and `input.formData` are used when the config has none. |
-| `config.auth` | `bearer_token` (`envVar`), `api_key` (`envVar`, `header`, default `X-API-Key`) or `basic_auth` (`userEnvVar`, `passwordEnvVar`). The values are read from the server's environment. |
+| `config.auth` | `bearer_token` (`envVar`), `api_key` (`envVar`, `header`, default `X-API-Key`) or `basic_auth` (`userEnvVar`, `passwordEnvVar`). The values are read from the server's environment. Without an `auth` object, the builder's HTTP tool form fields are used: `authType`, `credentialName` (the environment variable; `basic_auth` reads `<name>_USER` and `<name>_PASSWORD`) and `apiKeyHeader`. A credential that is not set fails the tool call instead of sending the request without it. |
 | `config.parameters` | `<placeholder>` parameters filled in the URL, query values, headers and body. |
 | `config.result.format` | `json` (default; falls back to text when the body is not JSON) or anything else for text. |
 

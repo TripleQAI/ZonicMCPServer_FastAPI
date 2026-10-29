@@ -7,6 +7,37 @@ from app.engine.executors.base import BaseExecutor
 if TYPE_CHECKING:
     from app.engine.container import ExecutionContext
 
+#: Authentication types; the builder's HTTP tool form offers the same names.
+_AUTH_TYPES = ('bearer_token', 'api_key', 'basic_auth')
+
+
+def auth_config(config: dict[str, Any]) -> dict[str, Any]:
+    """The tool's ``auth`` object, or the same settings from the builder's HTTP tool form:
+    ``authType``, ``credentialName`` (the server environment variable holding the secret) and
+    ``apiKeyHeader``. A ``basic_auth`` credential is the pair ``<name>_USER`` / ``<name>_PASSWORD``."""
+    if config.get('auth'):
+        return config['auth']
+    kind, name = config.get('authType'), config.get('credentialName') or ''
+    if kind not in _AUTH_TYPES:
+        return {}
+    if kind == 'basic_auth':
+        return {'type': kind, 'userEnvVar': f'{name}_USER', 'passwordEnvVar': f'{name}_PASSWORD'}
+    found = {'type': kind, 'envVar': name}
+    if kind == 'api_key' and config.get('apiKeyHeader'):
+        found['header'] = config['apiKeyHeader']
+    return found
+
+
+def _secret(name: str) -> str:
+    """A credential from the server's environment; a missing one fails the tool call, instead of
+    sending the request without it."""
+    import os
+
+    value = os.environ.get(name or '', '')
+    if not value:
+        raise ValueError(f'Credential "{name}" is not configured on the MCP server.')
+    return value
+
 
 class ApiExecutor(BaseExecutor):
     async def _run_with_cache(self, config, produce):
@@ -39,21 +70,16 @@ class ApiExecutor(BaseExecutor):
                    {**config.get('headers', {}), **resolved_input.get('headers', {})}.items()}
         query_params = {key: fill(value, 'query') for key, value in
                         {**config.get('queryParams', {}), **resolved_input.get('queryParams', {})}.items()}
-        auth_cfg = config.get('auth', {})
+        auth_cfg = auth_config(config)
 
         if auth_cfg.get('type') == 'bearer_token':
-            import os
-            token = os.environ.get(auth_cfg.get('envVar', ''), '')
-            headers['Authorization'] = f'Bearer {token}'
+            headers['Authorization'] = f'Bearer {_secret(auth_cfg.get("envVar", ""))}'
         elif auth_cfg.get('type') == 'api_key':
-            import os
-            key = os.environ.get(auth_cfg.get('envVar', ''), '')
-            headers[auth_cfg.get('header', 'X-API-Key')] = key
+            headers[auth_cfg.get('header', 'X-API-Key')] = _secret(auth_cfg.get('envVar', ''))
         elif auth_cfg.get('type') == 'basic_auth':
             import base64
-            import os
-            user = os.environ.get(auth_cfg.get('userEnvVar', ''), '')
-            pwd  = os.environ.get(auth_cfg.get('passwordEnvVar', ''), '')
+            user = _secret(auth_cfg.get('userEnvVar', ''))
+            pwd = _secret(auth_cfg.get('passwordEnvVar', ''))
             encoded = base64.b64encode(f'{user}:{pwd}'.encode()).decode()
             headers['Authorization'] = f'Basic {encoded}'
 
