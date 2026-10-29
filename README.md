@@ -9,6 +9,23 @@ models and MCP contract are unchanged; Django is replaced by FastAPI for hosting
 `pydantic-settings` for configuration. The conversion report is in
 `../docs/mcp-server/mcp-server-fastapi-conversion-report.md`.
 
+## Nebius x NVIDIA Global AI Hackathon
+
+This repository is part of the Zonic agent platform, our entry in the Nebius x NVIDIA Global AI Hackathon (Best Apps and Agents track). The platform's agents run on NVIDIA Nemotron models served by Nebius Token Factory. How that is wired, and which model does what, is in the runtime's README: [NVIDIA Nemotron on Nebius Token Factory](https://github.com/TripleQAI/ZonicAgentRuntimeBackend_Python_LangGraph#nvidia-nemotron-on-nebius-token-factory).
+
+**This repository's part:** Nemotron decides which tool to call and with which arguments; this server runs the call (`execute`). The demo agents' tools reach NYC Open Data, NYISO's public files, Open-Meteo and math.js through it, and a request can run several tools concurrently.
+
+**Live demo:** the chat at https://dev.tripleq.ai/agent-runtime-lg and the agent builder at https://dev.tripleq.ai/agent-visual-builder-lg/workflows. Both sign in with Amazon Cognito; the test accounts are in the hackathon submission's testing instructions.
+
+| Repository | Role |
+|---|---|
+| [ZonicAgentBuilderUI_NextJS](https://github.com/TripleQAI/ZonicAgentBuilderUI_NextJS) | The visual builder: design a workflow and pick a Nemotron model for each node |
+| [ZonicAgentBuilderServer_FastAPI](https://github.com/TripleQAI/ZonicAgentBuilderServer_FastAPI) | The builder's API: validation, import and export, the node registry and model options |
+| [ZonicAgentRuntimeBackend_Python_LangGraph](https://github.com/TripleQAI/ZonicAgentRuntimeBackend_Python_LangGraph) | Runs the workflows on LangGraph and calls Nemotron through Token Factory |
+| [ZonicAgentRuntimeUI_NextJS_For_LangGraph](https://github.com/TripleQAI/ZonicAgentRuntimeUI_NextJS_For_LangGraph) | The chat app people use the agents in |
+| **ZonicMCPServer_FastAPI** (this repository) | The agents' tools over open data |
+| [ZonicPostgresqlServer_FastAPI](https://github.com/TripleQAI/ZonicPostgresqlServer_FastAPI) | The PostgreSQL gateway every service stores data through (Neon) |
+
 ## Run locally
 
 ```powershell
@@ -138,3 +155,7 @@ docs/                design plan and dynamic function registration (from the Dja
 
 With `LIVE_SAMPLE_OPEN_DATA_DSN` set to the `sample_open_data_reader` connection,
 `tests/engine/test_postgres.py::test_live_sample_open_data` also queries the open test data.
+
+## License
+
+Licensed under the Apache License 2.0; see [LICENSE](LICENSE).
